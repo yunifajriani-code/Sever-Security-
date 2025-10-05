@@ -19,26 +19,34 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-// Sanitasi input untuk cegah "simulasi" SQL Injection
-function sanitizeInput(input) {
-  if (typeof input === "string") {
-    const blacklist = [
-      /;/g,
-      /--/g,
-      /drop/gi,
-      /select/gi,
-      /insert/gi,
-      /delete/gi,
-      /update/gi,
-    ];
-    for (let pattern of blacklist) {
-      if (pattern.test(input)) {
-        throw new Error("Input terdeteksi berbahaya");
-      }
-    }
+// ====== Fungsi Masking ======
+function maskValue(value) {
+  if (typeof value === "number") {
+    if (value === 100) return "***"; // masking khusus untuk 100
+    if (value > 90) return 90; // nilai max 90
   }
-  return input;
+  return value;
 }
+
+function maskObject(obj) {
+  let result = {};
+  for (let key in obj) {
+    result[key] = maskValue(obj[key]);
+  }
+  return result;
+}
+
+// ====== Logging Middleware ======
+function loggingMiddleware(req, res, next) {
+  const maskedBody = maskObject(req.body);
+  console.log(
+    `[${new Date().toISOString()}] ${req.method} ${req.url} | Body:`,
+    maskedBody
+  );
+  next();
+}
+
+app.use(loggingMiddleware);
 
 // ===== DATA SEDERHANA =====
 let users = [
@@ -58,9 +66,11 @@ app.get("/dummy-get", authMiddleware, (req, res) => {
 app.post("/dummy-post", authMiddleware, (req, res) => {
   try {
     const data = {
-      nama: sanitizeInput(req.body.nama),
-      kelas: sanitizeInput(req.body.kelas),
+      nama: req.body.nama,
+      kelas: req.body.kelas,
+      nilai: req.body.nilai, // contoh tambahan nilai untuk masking
     };
+
     const newId = users.length ? users[users.length - 1].id + 1 : 1;
     const newUser = { id: newId, ...data };
 
@@ -82,8 +92,9 @@ app.put("/dummy-put/:id", authMiddleware, (req, res) => {
 
   try {
     const data = {
-      nama: req.body.nama ? sanitizeInput(req.body.nama) : undefined,
-      kelas: req.body.kelas ? sanitizeInput(req.body.kelas) : undefined,
+      nama: req.body.nama,
+      kelas: req.body.kelas,
+      nilai: req.body.nilai,
     };
 
     users = users.map((user) => {
